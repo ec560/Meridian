@@ -16,6 +16,7 @@ let state = {
   dailyEarned: 0,
   streak: 0,
   lastResetDate: null,
+  lastResetAt: null,
   log: [],
   config: {...DEFAULT_CONFIG}
 };
@@ -409,7 +410,8 @@ async function loadState(user){
         dailyEarned: typeof persisted.dailyEarned === 'number' ? persisted.dailyEarned : 0,
         streak: typeof persisted.streak === 'number' ? persisted.streak : 0,
         lastResetDate: persisted.lastResetDate ?? null,
-        log: Array.isArray(persisted.log) ? persisted.log : [],
+        lastResetAt: typeof persisted.lastResetAt === 'number' ? persisted.lastResetAt : null,
+        log: Array.isArray(persisted.log) ? persisted.log.map(normalizeLogEntry) : [],
         config: {...DEFAULT_CONFIG, ...(persisted.config||{})}
       };
       if(state.config.target == null && state.config.cap != null) state.config.target = state.config.cap;
@@ -418,7 +420,7 @@ async function loadState(user){
       return;
     }
   }catch(e){}
-  state = {user,tasks:[],points:0,dailyEarned:0,streak:0,lastResetDate:null,log:[],config:{...DEFAULT_CONFIG}};
+  state = {user,tasks:[],points:0,dailyEarned:0,streak:0,lastResetDate:null,lastResetAt:null,log:[],config:{...DEFAULT_CONFIG}};
 }
 
 function setTasks(tasks){
@@ -504,21 +506,112 @@ function getPoints(priority){
   if(!base) return {onTime:0,late:0,miss:0};
   return base;
 }
-function addPoints(pts, desc){
-  state.dailyEarned += pts;
+
+function getLocalDateKey(date = new Date()){
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function todayStr(){
+  return getLocalDateKey();
+}
+
+function getResetBoundary(date = new Date()){
+  const boundary = new Date(date);
+  const [h, m] = String(state.config.eod || '00:00').split(':').map(Number);
+  boundary.setHours(h, m, 0, 0);
+  return boundary;
+}
+
+function getCurrentWorkdayKey(date = new Date()){
+  const boundary = getResetBoundary(date);
+  const workday = new Date(date);
+  if(date < boundary) workday.setDate(workday.getDate() - 1);
+  return getLocalDateKey(workday);
+}
+
+function getPreviousWorkdayKey(date = new Date()){
+  const day = new Date(date);
+  day.setDate(day.getDate() - 1);
+  return getLocalDateKey(day);
+}
+
+function getWorkdayKeyForTimestamp(timestamp){
+  return getCurrentWorkdayKey(new Date(timestamp));
+}
+
+function parseLoggedTimestamp(dateKey, timeValue){
+  const dateMatch = String(dateKey || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const timeMatch = String(timeValue || '').trim().match(/^(\d{1,2}):(\d{2})(?:\s*([AP]M))?$/i);
+  if(!dateMatch || !timeMatch) return null;
+  let hours = Number(timeMatch[1]);
+  const minutes = Number(timeMatch[2]);
+  const meridian = timeMatch[3] ? timeMatch[3].toUpperCase() : null;
+  if(Number.isNaN(hours) || Number.isNaN(minutes) || minutes < 0 || minutes > 59) return null;
+  if(meridian === 'AM'){
+    if(hours === 12) hours = 0;
+  }else if(meridian === 'PM'){
+    if(hours !== 12) hours += 12;
+  }
+  if(hours < 0 || hours > 23) return null;
+  const d = new Date(Number(dateMatch[1]), Number(dateMatch[2]) - 1, Number(dateMatch[3]), hours, minutes, 0, 0);
+  return d;
+}
+
+function normalizeLogEntry(entry){
+  if(!entry || typeof entry !== 'object') return entry;
+  if(typeof entry.at === 'number' && typeof entry.dayKey === 'string') return entry;
+  const parsed = parseLoggedTimestamp(entry.date, entry.time);
+  const at = typeof entry.at === 'number' ? entry.at : (parsed ? parsed.getTime() : Date.now());
+  const dayKey = typeof entry.dayKey === 'string' ? entry.dayKey : getWorkdayKeyForTimestamp(at);
+  return {...entry, at, dayKey};
+}
+
+function getEarnedForDate(dateKey){
+  return state.log.reduce((sum, entry) => {
+    const normalized = normalizeLogEntry(entry);
+    return sum + (normalized.dayKey === dateKey ? (normalized.pts || 0) : 0);
+  }, 0);
+}
+
+function formatLogDate(dateKey){
+  const today = getCurrentWorkdayKey();
+  if(dateKey === today) return 'Today';
+
+  const yesterday = getPreviousWorkdayKey();
+  if(dateKey === yesterday) return 'Yesterday';
+
+  const parsed = new Date(dateKey + 'T12:00:00');
+  if(Number.isNaN(parsed.getTime())) return dateKey;
+  try{
+    return new Intl.DateTimeFormat(undefined, {weekday:'short', month:'short', day:'numeric'}).format(parsed);
+  }catch(e){
+    return dateKey;
+  }
+}
+
+function addPoints(pts, desc, dateKey = getCurrentWorkdayKey()){
+  const at = Date.now();
+  const entryDateKey = dateKey || getCurrentWorkdayKey(new Date(at));
   state.points = Math.max(0, state.points + pts);
   const ts = new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
-  state.log.unshift({pts, desc, time: ts, date: todayStr()});
+  state.log.unshift({pts, desc, time: ts, at, dayKey: entryDateKey, date: entryDateKey});
   if(state.log.length > 200) state.log.pop();
+  state.dailyEarned = getEarnedForDate(getCurrentWorkdayKey());
   saveState();
 }
-function todayStr(){return new Date().toISOString().slice(0,10);}
+
 function updateTopbar(){
   const target = Math.max(1, state.config.target || 50);
   const today = document.getElementById('today-display');
-  const done = state.dailyEarned >= target;
+  const todayKey = getCurrentWorkdayKey();
+  const earnedToday = getEarnedForDate(todayKey);
+  state.dailyEarned = earnedToday;
+  const done = earnedToday >= target;
   if(today){
-    const remaining = Math.max(0, target - state.dailyEarned);
+    const remaining = Math.max(0, target - earnedToday);
     today.textContent = done ? target + ' / ' + target : remaining + ' left today';
     today.dataset.state = done ? 'done' : remaining <= Math.max(5, Math.ceil(target * 0.25)) ? 'warning' : 'pending';
   }
@@ -564,16 +657,19 @@ function getEODToday(){
   return d;
 }
 async function checkEODReset(){
-  const today = todayStr();
-  if(state.lastResetDate === today) return false;
-  // Evaluate previous day tasks
+  const now = new Date();
+  const boundary = getResetBoundary(now);
+  if(now < boundary) return false;
+  const boundaryTs = boundary.getTime();
+  if(typeof state.lastResetAt === 'number' && state.lastResetAt >= boundaryTs) return false;
+  const today = getCurrentWorkdayKey(now);
+  const previousDay = getPreviousWorkdayKey(now);
   const newTasks = [];
   const syncActions = [];
   for(const t of state.tasks){
     if(t.priority && t.priority !== 'dz'){
-      // Missed - penalize
       const p = getPoints(t.priority);
-      addPoints(p.miss, 'Missed: '+priorityLabel(t.priority)+' - '+t.name);
+      addPoints(p.miss, 'Missed: '+priorityLabel(t.priority)+' - '+t.name, previousDay);
       if(t.recurring){
         const resetTask = {...t, priority:'dz', startedAt:null, elapsedBeforeMove:0};
         newTasks.push(resetTask);
@@ -591,11 +687,11 @@ async function checkEODReset(){
     }
   }
   state.tasks = newTasks;
-  // Streak check: if the day met the target, increment
-  if(state.dailyEarned >= Math.max(1, state.config.target || 50)) state.streak++;
+  if(getEarnedForDate(previousDay) >= Math.max(1, state.config.target || 50)) state.streak++;
   else state.streak = 0;
-  state.dailyEarned = 0;
+  state.dailyEarned = getEarnedForDate(today);
   state.lastResetDate = today;
+  state.lastResetAt = Date.now();
   saveState();
   await Promise.allSettled(syncActions);
   return true;
@@ -851,15 +947,58 @@ function renderLog(){
   const list = document.getElementById('log-list');
   list.innerHTML='';
   if(!state.log.length){list.innerHTML='<div class="log-empty">No entries yet.</div>';return;}
-  for(const entry of state.log){
-    const el = document.createElement('div'); el.className='log-item';
-    const pts = document.createElement('div');
-    pts.className='log-pts '+(entry.pts>0?'log-pos':entry.pts<0?'log-neg':'log-zero');
-    pts.textContent=(entry.pts>0?'+':'')+entry.pts+' XP';
-    const desc = document.createElement('div'); desc.className='log-desc'; desc.textContent=entry.desc;
-    const time = document.createElement('div'); time.className='log-time'; time.textContent=entry.time;
-    el.appendChild(pts); el.appendChild(desc); el.appendChild(time);
-    list.appendChild(el);
+  const entries = state.log
+    .map(normalizeLogEntry)
+    .filter(Boolean)
+    .sort((a,b) => (b.at || 0) - (a.at || 0));
+  const buckets = new Map();
+  for(const entryData of entries){
+    const key = entryData.dayKey || getWorkdayKeyForTimestamp(entryData.at || Date.now());
+    if(!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(entryData);
+  }
+
+  const orderedKeys = [...buckets.keys()].sort((a,b) => {
+    const aTs = (parseLoggedTimestamp(a, '12:00 AM') || new Date(a + 'T00:00:00')).getTime();
+    const bTs = (parseLoggedTimestamp(b, '12:00 AM') || new Date(b + 'T00:00:00')).getTime();
+    return bTs - aTs;
+  });
+
+  for(const dayKey of orderedKeys){
+    const group = document.createElement('div');
+    group.className = 'log-day-group';
+
+    const head = document.createElement('div');
+    head.className = 'log-day-head';
+
+    const dayEntries = buckets.get(dayKey) || [];
+    const dayTotal = dayEntries.reduce((sum, entry) => sum + (entry.pts || 0), 0);
+
+    const label = document.createElement('div');
+    label.className = 'log-day-label';
+    label.textContent = formatLogDate(dayKey);
+
+    const total = document.createElement('div');
+    total.className = 'log-day-total';
+    total.textContent = (dayTotal > 0 ? '+' : '') + dayTotal + ' XP';
+
+    head.appendChild(label);
+    head.appendChild(total);
+    group.appendChild(head);
+
+    for(const entryData of dayEntries){
+      const el = document.createElement('div');
+      el.className='log-item';
+      const pts = document.createElement('div');
+      pts.className='log-pts '+(entryData.pts>0?'log-pos':entryData.pts<0?'log-neg':'log-zero');
+      pts.textContent=(entryData.pts>0?'+':'')+entryData.pts+' XP';
+      const desc = document.createElement('div'); desc.className='log-desc'; desc.textContent=entryData.desc;
+      const time = document.createElement('div'); time.className='log-time'; time.textContent=entryData.time;
+      el.appendChild(pts); el.appendChild(desc); el.appendChild(time);
+      group.appendChild(el);
+    }
+
+    list.appendChild(group);
   }
 }
 
