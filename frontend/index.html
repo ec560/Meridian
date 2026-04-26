@@ -10,15 +10,24 @@
 
 <!-- LOGIN -->
 <div id="login-screen">
-  <div class="login-card">
-    <div class="login-logo">Meridian</div>
-    <div class="login-form">
-      <input type="text" id="username" placeholder="Username" autocomplete="off"/>
-      <input type="password" id="password" placeholder="Password"/>
-      <div class="login-err" id="login-err"></div>
-      <button class="login-btn" onclick="tryLogin()">Sign in</button>
+  <div class="landing-shell">
+    <section class="landing-copy" aria-label="Product overview">
+      <h1>Keep it moving.</h1>
+      <p>A quiet task tracker for the things that need your attention first.</p>
+    </section>
+
+    <div class="login-card auth-card">
+      <div class="login-logo">Meridian</div>
+      <div class="auth-copy" id="auth-copy">A quiet place for the day ahead.</div>
+      <div class="login-form">
+        <input type="text" id="username" placeholder="Username" autocomplete="off"/>
+        <input type="password" id="password" placeholder="Password"/>
+        <div class="login-err" id="login-err"></div>
+        <button class="login-btn" id="auth-submit" onclick="tryLogin()">Log in</button>
+      </div>
+      <div class="login-hint" id="auth-hint">Demo access.</div>
+      <div class="auth-switch" id="auth-switch-wrap"><span id="auth-switch-prefix">New here?</span> <button class="auth-link" type="button" id="auth-switch">Sign up</button></div>
     </div>
-    <div class="login-hint">Demo: any username + any password</div>
   </div>
 </div>
 
@@ -34,25 +43,22 @@
     </div>
     <div class="topbar-right">
       <div class="score-chip" id="today-display">50 left today</div>
+      <div class="eod-chip" id="eod-countdown">Reset in --:--</div>
       <button class="logout-btn" onclick="logout()">Sign out</button>
     </div>
   </div>
 
   <!-- BOARD TAB -->
   <div class="main" id="tab-board">
-    <div class="eod-bar">
-      <span class="eod-timer" id="eod-countdown"></span>
-    </div>
     <div class="board-wrap">
       <div class="board" id="board-shell">
         <!-- Pending -->
         <div class="col dz-accent" id="col-dz" ondragover="handleColumnDragOver(event,'dz')" ondrop="dropTask(event,'dz')">
           <div class="col-header">
             <div class="col-title">
-              <div class="col-dot" style="background:var(--dz)"></div>
+              <span class="col-mark col-mark-dz" aria-hidden="true"></span>
               Pending
             </div>
-            <span class="col-count" id="count-dz">0</span>
           </div>
           <div class="add-row">
             <div class="add-row-inline">
@@ -66,10 +72,9 @@
         <div class="col p3-accent" id="col-p3" ondragover="handleColumnDragOver(event,'p3')" ondrop="dropTask(event,'p3')">
           <div class="col-header">
             <div class="col-title">
-              <div class="col-dot" style="background:var(--p3)"></div>
+              <span class="col-mark col-mark-p3" aria-hidden="true"></span>
               Low priority
             </div>
-            <span class="col-count" id="count-p3">0</span>
           </div>
           <div class="col-body" id="tasks-p3"></div>
         </div>
@@ -77,10 +82,9 @@
         <div class="col p2-accent" id="col-p2" ondragover="handleColumnDragOver(event,'p2')" ondrop="dropTask(event,'p2')">
           <div class="col-header">
             <div class="col-title">
-              <div class="col-dot" style="background:var(--p2)"></div>
+              <span class="col-mark col-mark-p2" aria-hidden="true"></span>
               Medium priority
             </div>
-            <span class="col-count" id="count-p2">0</span>
           </div>
           <div class="col-body" id="tasks-p2"></div>
         </div>
@@ -88,10 +92,9 @@
         <div class="col p1-accent" id="col-p1" ondragover="handleColumnDragOver(event,'p1')" ondrop="dropTask(event,'p1')">
           <div class="col-header">
             <div class="col-title">
-              <div class="col-dot" style="background:var(--p1)"></div>
+              <span class="col-mark col-mark-p1" aria-hidden="true"></span>
               High priority
             </div>
-            <span class="col-count" id="count-p1">0</span>
           </div>
           <div class="col-body" id="tasks-p1"></div>
         </div>

@@ -17,6 +17,7 @@ let draggedTaskId = null;
 let dragHoverPriority = null;
 let undoAction = null;
 let undoTimer = null;
+let authMode = 'login';
 
 function normalizeTask(task, fallbackIndex = 0){
   const taskId = task?.taskId ?? task?.id ?? `local-${Date.now()}-${fallbackIndex}`;
@@ -123,6 +124,29 @@ function setLoginError(message){
   document.getElementById('login-err').textContent = message || '';
 }
 
+function syncAuthMode(){
+  const submit = document.getElementById('auth-submit');
+  const hint = document.getElementById('auth-hint');
+  const copy = document.getElementById('auth-copy');
+  const switchBtn = document.getElementById('auth-switch');
+  const switchPrefix = document.getElementById('auth-switch-prefix');
+  if(submit) submit.textContent = authMode === 'signup' ? 'Sign up' : 'Log in';
+  if(hint) hint.textContent = authMode === 'signup' ? 'A different door.' : 'Demo access.';
+  if(copy) copy.textContent = authMode === 'signup' ? 'Set up a workspace for later.' : 'A quiet place for the day ahead.';
+  if(switchBtn){
+    switchBtn.textContent = authMode === 'signup' ? 'Log in' : 'Sign up';
+    switchBtn.onclick = () => setAuthMode(authMode === 'signup' ? 'login' : 'signup');
+  }
+  if(switchPrefix) switchPrefix.textContent = authMode === 'signup' ? 'Already inside?' : 'New here?';
+}
+
+function setAuthMode(mode){
+  authMode = mode === 'signup' ? 'signup' : 'login';
+  syncAuthMode();
+  const username = document.getElementById('username');
+  if(username) username.focus();
+}
+
 async function loadState(user){
   try{
     const d = localStorage.getItem('meridian_'+user);
@@ -183,6 +207,7 @@ function logout(){
   saveState();
   clearInterval(window._tick);
   state.user=null;
+  setAuthMode('login');
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('app').style.display='none';
   document.getElementById('username').value='';
@@ -216,7 +241,11 @@ function updateTopbar(){
   const target = Math.max(1, state.config.target || 50);
   const today = document.getElementById('today-display');
   const done = state.dailyEarned >= target;
-  if(today) today.textContent = done ? target + ' / ' + target : (target - state.dailyEarned) + ' left today';
+  if(today){
+    const remaining = Math.max(0, target - state.dailyEarned);
+    today.textContent = done ? target + ' / ' + target : remaining + ' left today';
+    today.dataset.state = done ? 'done' : remaining <= Math.max(5, Math.ceil(target * 0.25)) ? 'warning' : 'pending';
+  }
 }
 
 function nowSec(){return Date.now()/1000;}
@@ -299,7 +328,8 @@ async function checkEODReset(){
 function updateEODBar(){
   const eod = getEODToday();
   const diff = Math.max(0, (eod - Date.now())/1000);
-  document.getElementById('eod-countdown').textContent = 'Reset in ' + fmtTimer(diff);
+  const el = document.getElementById('eod-countdown');
+  if(el) el.textContent = 'Reset in ' + fmtTimer(diff);
 }
 
 // RENDER
@@ -526,12 +556,12 @@ function render(){
     const col = document.getElementById('tasks-'+p);
     col.innerHTML='';
     const items = state.tasks.filter(t=>t.priority===p);
-    document.getElementById('count-'+p).textContent=items.length;
     if(items.length){
       for(const t of items) col.appendChild(renderCard(t));
     }else{
       const empty = document.createElement('div');
       empty.className = 'empty-state';
+      empty.dataset.priority = p;
       empty.textContent = emptyStateText[p];
       col.appendChild(empty);
     }
@@ -756,3 +786,5 @@ function startTick(){
     })().catch(err => console.error('Tick loop failed', err));
   }, 1000);
 }
+
+syncAuthMode();
