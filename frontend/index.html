@@ -1,25 +1,149 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Home</title>
-  </head>
-  <body>
-    <header>
-      <h1>Hello world</h1>
-    </header>
+﻿<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<h2 class="sr-only">Meridian</h2>
 
-    <main>
-      <p>I am website</p>
-    </main>
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">Meridian</div>
+    <div class="login-form">
+      <input type="text" id="username" placeholder="Username" autocomplete="off"/>
+      <input type="password" id="password" placeholder="Password"/>
+      <div class="login-err" id="login-err"></div>
+      <button class="login-btn" onclick="tryLogin()">Sign in</button>
+    </div>
+    <div class="login-hint">Demo: any username + any password</div>
+  </div>
+</div>
 
-    <footer>
-      <small>&copy; <span id="year"></span></small>
-    </footer>
+<!-- APP -->
+<div id="app">
+  <div class="topbar">
+    <div class="topbar-logo">Meridian</div>
+    <div class="topbar-sep"></div>
+    <div class="topbar-tabs">
+      <button class="tab-btn active" onclick="switchTab('board',this)">Board</button>
+      <button class="tab-btn" onclick="switchTab('log',this)">Log</button>
+      <button class="tab-btn" onclick="switchTab('settings',this)">Settings</button>
+    </div>
+    <div class="topbar-right">
+      <div class="score-chip" id="today-display">50 left today</div>
+      <button class="logout-btn" onclick="logout()">Sign out</button>
+    </div>
+  </div>
 
-    <script>
-      document.getElementById("year").textContent = new Date().getFullYear();
-    </script>
-  </body>
+  <!-- BOARD TAB -->
+  <div class="main" id="tab-board">
+    <div class="eod-bar">
+      <span class="eod-timer" id="eod-countdown"></span>
+    </div>
+    <div class="board-wrap">
+      <div class="board" id="board-shell">
+        <!-- Pending -->
+        <div class="col dz-accent" id="col-dz" ondragover="handleColumnDragOver(event,'dz')" ondrop="dropTask(event,'dz')">
+          <div class="col-header">
+            <div class="col-title">
+              <div class="col-dot" style="background:var(--dz)"></div>
+              Pending
+            </div>
+            <span class="col-count" id="count-dz">0</span>
+          </div>
+          <div class="add-row">
+            <div class="add-row-inline">
+              <input class="add-input" id="new-task-input" placeholder="+ New task" onkeydown="handleAddKey(event)"/>
+              <input class="add-time" id="new-task-time" type="time" onkeydown="handleAddKey(event)" aria-label="Schedule time"/>
+            </div>
+          </div>
+          <div class="dead-zone-list" id="tasks-dz"></div>
+        </div>
+        <!-- Low priority -->
+        <div class="col p3-accent" id="col-p3" ondragover="handleColumnDragOver(event,'p3')" ondrop="dropTask(event,'p3')">
+          <div class="col-header">
+            <div class="col-title">
+              <div class="col-dot" style="background:var(--p3)"></div>
+              Low priority
+            </div>
+            <span class="col-count" id="count-p3">0</span>
+          </div>
+          <div class="col-body" id="tasks-p3"></div>
+        </div>
+        <!-- Medium priority -->
+        <div class="col p2-accent" id="col-p2" ondragover="handleColumnDragOver(event,'p2')" ondrop="dropTask(event,'p2')">
+          <div class="col-header">
+            <div class="col-title">
+              <div class="col-dot" style="background:var(--p2)"></div>
+              Medium priority
+            </div>
+            <span class="col-count" id="count-p2">0</span>
+          </div>
+          <div class="col-body" id="tasks-p2"></div>
+        </div>
+        <!-- High priority -->
+        <div class="col p1-accent" id="col-p1" ondragover="handleColumnDragOver(event,'p1')" ondrop="dropTask(event,'p1')">
+          <div class="col-header">
+            <div class="col-title">
+              <div class="col-dot" style="background:var(--p1)"></div>
+              High priority
+            </div>
+            <span class="col-count" id="count-p1">0</span>
+          </div>
+          <div class="col-body" id="tasks-p1"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOG TAB -->
+  <div class="main" id="tab-log" style="display:none">
+    <div class="log-list" id="log-list"></div>
+  </div>
+
+  <!-- SETTINGS TAB -->
+  <div class="main" id="tab-settings" style="display:none">
+    <div class="settings-panel">
+        <div class="settings-section">
+          <div class="setting-row">
+          <div class="setting-label" style="color:var(--p1)">High priority timer</div>
+          <input class="setting-input" id="s-p1-hr" type="number" min="0.25" max="24" step="0.25" value="2"> hr
+        </div>
+        <div class="setting-row">
+          <div class="setting-label" style="color:var(--p2)">Medium priority timer</div>
+          <input class="setting-input" id="s-p2-hr" type="number" min="0.25" max="24" step="0.25" value="4"> hr
+        </div>
+        <div class="setting-row">
+          <div class="setting-label" style="color:var(--p3)">Low priority timer</div>
+          <input class="setting-input" id="s-p3-hr" type="number" min="0.25" max="24" step="0.25" value="8"> hr
+        </div>
+      </div>
+      <div class="settings-section">
+        <div class="setting-row">
+          <div class="setting-label">Reset time</div>
+          <input class="setting-input" id="s-eod" type="time" value="00:00" style="width:100px">
+        </div>
+      </div>
+      <div class="settings-section">
+        <div class="setting-row">
+          <div class="setting-label">Daily target</div>
+          <input class="setting-input" id="s-target" type="number" min="20" max="200" step="5" value="50"> pts
+        </div>
+      </div>
+      <button class="save-btn" onclick="saveSettings()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div id="undo-toast" class="undo-toast" hidden role="status" aria-live="polite">
+  <span class="undo-toast-text" id="undo-toast-text"></span>
+  <button class="undo-toast-btn" type="button" onclick="undoLastAction()">Undo</button>
+</div>
+
+<script src="app.js"></script>
+</body>
 </html>
+
