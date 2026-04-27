@@ -273,6 +273,41 @@ function saveState(){
   try{localStorage.setItem('meridian_'+state.user, JSON.stringify(serializeState()));}catch(e){}
 }
 
+let renderFrame = null;
+let saveFrame = null;
+
+function scheduleRender(){
+  if(renderFrame != null) return;
+  renderFrame = requestAnimationFrame(() => {
+    renderFrame = null;
+    render();
+  });
+}
+
+function scheduleSaveState(){
+  if(saveFrame != null) return;
+  const flush = () => {
+    saveFrame = null;
+    saveState();
+  };
+  if(typeof window.requestIdleCallback === 'function'){
+    saveFrame = window.requestIdleCallback(flush, {timeout: 250});
+  } else {
+    saveFrame = window.setTimeout(flush, 0);
+  }
+}
+
+function flushPendingSaveState(){
+  if(saveFrame == null) return;
+  if(typeof window.cancelIdleCallback === 'function'){
+    window.cancelIdleCallback(saveFrame);
+  } else {
+    window.clearTimeout(saveFrame);
+  }
+  saveFrame = null;
+  saveState();
+}
+
 async function apiRequest(path, options = {}){
   const {method = 'GET', body} = options;
   const init = {
@@ -947,8 +982,8 @@ async function addTask(name, scheduledTime){
       scheduledTime: time
     });
     state.tasks.push(created);
-    saveState();
-    render();
+    scheduleSaveState();
+    scheduleRender();
   }catch(e){
     console.error('Could not create task', e);
     alert('Could not create task. Please try again.');
@@ -971,16 +1006,18 @@ async function completeTask(id){
   completingTaskIds.add(taskId);
   const removed = {...t};
   state.tasks.splice(index, 1);
-  saveState(); render();
+  scheduleSaveState();
+  scheduleRender();
   try{
     await deleteTaskOnApi(removed);
   }catch(e){
     console.error('Could not complete task', e);
     state.tasks.splice(Math.min(index, state.tasks.length), 0, removed);
-    saveState(); render();
+    scheduleSaveState();
+    scheduleRender();
     alert('Could not complete task. Please try again.');
     completingTaskIds.delete(taskId);
-    render();
+    scheduleRender();
     return;
   }
   if(removed.priority && removed.priority!=='dz'){
@@ -990,20 +1027,22 @@ async function completeTask(id){
     addPoints(pts, (late?'Late':'On time')+': '+priorityLabel(removed.priority)+' - '+removed.name);
   }
   completingTaskIds.delete(taskId);
-  render();
+  scheduleRender();
 }
 async function deleteTask(id){
   const index = state.tasks.findIndex(x=>x.id===id);
   if(index < 0) return;
   const removed = {...state.tasks[index]};
   state.tasks.splice(index, 1);
-  saveState(); render();
+  scheduleSaveState();
+  scheduleRender();
   try{
     await deleteTaskOnApi(removed);
   }catch(e){
     console.error('Could not delete task', e);
     state.tasks.splice(index, 0, removed);
-    saveState(); render();
+    scheduleSaveState();
+    scheduleRender();
     alert('Could not delete task. Please try again.');
     return;
   }
@@ -1019,7 +1058,8 @@ async function deleteTask(id){
       });
       const insertAt = Math.min(index, state.tasks.length);
       state.tasks.splice(insertAt, 0, recreated);
-      saveState(); render();
+      scheduleSaveState();
+      scheduleRender();
     }catch(e){
       console.error('Could not undo delete', e);
       alert('Could not restore the task.');
@@ -1031,17 +1071,20 @@ async function toggleRecurring(id){
   if(!t) return;
   const previous = {...t};
   t.recurring=!t.recurring;
-  saveState(); render();
+  scheduleSaveState();
+  scheduleRender();
   try{
     const updated = await updateTaskOnApi(t);
     const idx = state.tasks.findIndex(x=>x.id===updated.id);
     if(idx >= 0) state.tasks[idx] = updated;
-    saveState(); render();
+    scheduleSaveState();
+    scheduleRender();
   }catch(e){
     console.error('Could not update recurring state', e);
     const idx = state.tasks.findIndex(x=>x.id===previous.id);
     if(idx >= 0) state.tasks[idx] = previous;
-    saveState(); render();
+    scheduleSaveState();
+    scheduleRender();
     alert('Could not update task. Please try again.');
   }
 }
@@ -1067,18 +1110,21 @@ async function moveTask(id, newPriority){
   }
 
   t.priority=newPriority;
-  saveState(); render();
+  scheduleSaveState();
+  scheduleRender();
   try{
     const updated = await updateTaskOnApi(t);
     const currentIndex = state.tasks.findIndex(x=>x.id===updated.id);
     if(currentIndex >= 0) state.tasks[currentIndex] = updated;
-    saveState(); render();
+    scheduleSaveState();
+    scheduleRender();
   }catch(e){
     console.error('Could not move task', e);
     const currentIndex = state.tasks.findIndex(x=>x.id===previous.id);
     if(currentIndex >= 0) state.tasks[currentIndex] = previous;
     else state.tasks.splice(Math.min(previousIndex, state.tasks.length), 0, previous);
-    saveState(); render();
+    scheduleSaveState();
+    scheduleRender();
     alert('Could not move task. Please try again.');
     return;
   }
@@ -1103,7 +1149,8 @@ function saveSettings(){
   state.config.target=Math.min(200,Math.max(20,parseInt(document.getElementById('s-target').value)||50));
   state.config.cap=state.config.target;
   syncSettings();
-  saveState(); render();
+  scheduleSaveState();
+  scheduleRender();
 }
 
 // TABS
@@ -1135,3 +1182,5 @@ function startTick(){
 document.addEventListener("DOMContentLoaded", () => {
   bootstrapAuth();
 });
+
+window.addEventListener('pagehide', flushPendingSaveState);
