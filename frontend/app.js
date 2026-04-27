@@ -22,6 +22,7 @@ let draggedTaskId = null;
 let dragHoverPriority = null;
 let undoAction = null;
 let undoTimer = null;
+let completingTaskIds = new Set();
 let authSession = null;
 let userManager = null;
 
@@ -754,7 +755,9 @@ function renderCard(task){
   const mkBtn=(label,cls,fn)=>{const b=document.createElement('button');b.className='act-btn '+(cls||'');b.textContent=label;b.onclick=fn;return b;};
 
   // Complete
-  acts.appendChild(mkBtn('Done','complete',()=>completeTask(task.taskId || task.id)));
+  const completeBtn = mkBtn('Done','complete',()=>completeTask(task.taskId || task.id));
+  completeBtn.disabled = completingTaskIds.has(String(task.taskId || task.id));
+  acts.appendChild(completeBtn);
   // Delete
   acts.appendChild(mkBtn('Delete','delete',()=>deleteTask(task.taskId || task.id)));
   // Recurring toggle
@@ -960,23 +963,34 @@ function handleAddKey(e){
   timeInput.value='';
 }
 async function completeTask(id){
-  const t=state.tasks.find(x=>x.id===id);
+  const taskId = String(id);
+  if(completingTaskIds.has(taskId)) return;
+  const index = state.tasks.findIndex(x=>x.id===taskId);
+  const t = index >= 0 ? state.tasks[index] : null;
   if(!t) return;
+  completingTaskIds.add(taskId);
+  const removed = {...t};
+  state.tasks.splice(index, 1);
+  saveState(); render();
   try{
-    await deleteTaskOnApi(t);
+    await deleteTaskOnApi(removed);
   }catch(e){
     console.error('Could not complete task', e);
+    state.tasks.splice(Math.min(index, state.tasks.length), 0, removed);
+    saveState(); render();
     alert('Could not complete task. Please try again.');
+    completingTaskIds.delete(taskId);
+    render();
     return;
   }
-  if(t.priority && t.priority!=='dz'){
-    const p=getPoints(t.priority);
-    const late=isLate(t);
+  if(removed.priority && removed.priority!=='dz'){
+    const p=getPoints(removed.priority);
+    const late=isLate(removed);
     const pts=late?p.late:p.onTime;
-    addPoints(pts, (late?'Late':'On time')+': '+priorityLabel(t.priority)+' - '+t.name);
+    addPoints(pts, (late?'Late':'On time')+': '+priorityLabel(removed.priority)+' - '+removed.name);
   }
-  state.tasks=state.tasks.filter(x=>x.id!==id);
-  saveState(); render();
+  completingTaskIds.delete(taskId);
+  render();
 }
 async function deleteTask(id){
   const index = state.tasks.findIndex(x=>x.id===id);
@@ -1034,6 +1048,7 @@ async function toggleRecurring(id){
 async function moveTask(id, newPriority){
   const t=state.tasks.find(x=>x.id===id);
   if(!t) return;
+  clearUndoToast();
   const oldPriority = t.priority;
   if(newPriority===oldPriority) return;
   const previous = {...t};
