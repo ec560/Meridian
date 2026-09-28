@@ -15,3 +15,7 @@ Meridian gives users a place to sort work by priority, track their progress thro
 - Cognito sign-in for a browser-only app
 - A lightweight AWS-hosted frontend and API flow
 - Simple and responsive interface that stays easy to use
+
+## Architecture Diagram
+
+<img width="960" height="540" alt="Meridian" src="https://github.com/user-attachments/assets/d5288c7f-d193-4ed7-9557-215bc567b21f" />
